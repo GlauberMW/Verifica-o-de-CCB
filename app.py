@@ -53,8 +53,22 @@ if foto_capturada:
     bytes_data = foto_capturada.getvalue()
     imagem_cv = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
     
-    # Processamento de imagem padrão
-    cinza = cv2.cvtColor(imagem_cv, cv2.COLOR_BGR2GRAY)
+    # Pegar as dimensões reais da imagem capturada
+    altura_img, largura_img, _ = imagem_cv.shape
+    
+    # --- RECORTAR APENAS A ÁREA DESTACADA (ROI) ---
+    # Mapeando matematicamente as porcentagens do CSS (width: 38%, height: 18%, top: 42%)
+    largura_alvo = int(largura_img * 0.38)
+    altura_alvo = int(altura_img * 0.18)
+    
+    x_inicio = int((largura_img - largura_alvo) / 2)
+    y_inicio = int((altura_img * 0.42) - (altura_alvo / 2))
+    
+    # Recorta o bloco correspondente ao retângulo vermelho
+    imagem_recortada = imagem_cv[y_inicio:y_inicio+altura_alvo, x_inicio:x_inicio+largura_alvo]
+    
+    # Processamento de imagem aplicado APENAS na área recortada
+    cinza = cv2.cvtColor(imagem_recortada, cv2.COLOR_BGR2GRAY)
     desfoque = cv2.GaussianBlur(cinza, (7, 7), 0)
     bordas = cv2.Canny(desfoque, 50, 100)
     contornos, _ = cv2.findContours(bordas, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -63,20 +77,21 @@ if foto_capturada:
         maior_contorno = max(contornos, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(maior_contorno)
         
-        # --- ALTERAÇÃO DA PROPORÇÃO DO PIXEL PARA CORREÇÃO DO ERRO ---
-        # Alterado de 0.055 para 0.038. Isso fará o sistema ler menos centímetros 
-        # para o mesmo enquadramento, forçando a reprovação de selos pequenos.
-        proporcao_pixel_cm = 0.034  
+        # Fator de calibração adaptado para o novo recorte restrito
+        proporcao_pixel_cm = 0.038  
         
         largura_medida = round(w * proporcao_pixel_cm, 2)
         altura_medida = round(h * proporcao_pixel_cm, 2)
         
-        # Desenha o resultado na imagem exibindo também a largura bruta detectada em pixels (px)
-        cv2.rectangle(imagem_cv, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        cv2.putText(imagem_cv, f"{w}px | {largura_medida}cm x {altura_medida}cm", (x, y - 10),
+        # Desenha o contorno detectado de volta na imagem original para o operador ver
+        cv2.rectangle(imagem_cv, (x_inicio + x, y_inicio + y), (x_inicio + x + w, y_inicio + y + h), (0, 255, 0), 2)
+        cv2.putText(imagem_cv, f"{w}px | {largura_medida}cm x {altura_medida}cm", (x_inicio + x, y_inicio + y - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (36, 255, 12), 2)
         
-        st.image(imagem_cv, channels="BGR", caption="Superfície Detectada")
+        # Desenha um retângulo vermelho definitivo na foto final para mostrar onde foi lido
+        cv2.rectangle(imagem_cv, (x_inicio, y_inicio), (x_inicio + largura_alvo, y_inicio + altura_alvo), (0, 0, 255), 2)
+        
+        st.image(imagem_cv, channels="BGR", caption="Superfície Detectada Restrita à Área do Alvo")
         
         # Validação estrita de limites mínimos
         aprovado_comprimento = largura_medida >= 5.0
@@ -96,4 +111,7 @@ if foto_capturada:
                 erros.append("Altura abaixo de 22mm")
             st.error(f"❌ REPROVADO: {', '.join(erros)}.")
     else:
-        st.warning("⚠️ Não foi possível identificar as bordas do objeto claramente.")
+        # Mostra onde estava o alvo mesmo se falhar a detecção
+        cv2.rectangle(imagem_cv, (x_inicio, y_inicio), (x_inicio + largura_alvo, y_inicio + altura_alvo), (0, 0, 255), 2)
+        st.image(imagem_cv, channels="BGR", caption="Falha na Detecção")
+        st.warning("⚠️ Não foi possível identificar as bordas do objeto dentro do retângulo destacado.")
