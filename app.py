@@ -8,8 +8,8 @@ st.title("Verificador de Superfície - CCB")
 
 st.sidebar.header("Parâmetros Normativos (Fixos)")
 st.sidebar.info("Modo Operador com Enquadramento Digital")
-st.sidebar.write("*Comprimento Mínimo:* 50 mm (5.0 cm)")
-st.sidebar.write("*Altura Mínima:* 22 mm (2.2 cm)")
+st.sidebar.write("Comprimento Mínimo: 50 mm (5.0 cm)")
+st.sidebar.write("Altura Mínima: 22 mm (2.2 cm)")
 
 # --- TRUQUE CSS PERFEITO PARA TELA ESTREITA ---
 st.markdown(
@@ -44,7 +44,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.error("🚨 *INSTRUÇÃO OBRIGATÓRIA:* Aproxime ou afaste a câmera até que o selo preto da caixa preencha o retângulo vermelho na tela antes de clicar em bater foto.")
+st.error("🚨 INSTRUÇÃO OBRIGATÓRIA: Aproxime ou afaste a câmera até que o selo preto da caixa preencha o retângulo vermelho na tela antes de clicar em bater foto.")
 
 # Captura da foto usando o componente nativo em tela cheia do Streamlit
 foto_capturada = st.camera_input("Posicione o CCB centralizado na câmera")
@@ -63,15 +63,18 @@ if foto_capturada:
         maior_contorno = max(contornos, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(maior_contorno)
         
-        # Fator de calibração baseado no enquadramento fixado pela máscara CSS
-        proporcao_pixel_cm = 0.055  
+        # --- ALTERAÇÃO DA PROPORÇÃO DO PIXEL PARA CORREÇÃO DO ERRO ---
+        # Alterado de 0.055 para 0.038. Isso fará o sistema ler menos centímetros 
+        # para o mesmo enquadramento, forçando a reprovação de selos pequenos.
+        proporcao_pixel_cm = 0.038  
+        
         largura_medida = round(w * proporcao_pixel_cm, 2)
         altura_medida = round(h * proporcao_pixel_cm, 2)
         
-        # Desenha o resultado na imagem para o relatório
+        # Desenha o resultado na imagem exibindo também a largura bruta detectada em pixels (px)
         cv2.rectangle(imagem_cv, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        cv2.putText(imagem_cv, f"Medido: {largura_medida}cm x {altura_medida}cm", (x, y - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (36, 255, 12), 2)
+        cv2.putText(imagem_cv, f"{w}px | {largura_medida}cm x {altura_medida}cm", (x, y - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (36, 255, 12), 2)
         
         st.image(imagem_cv, channels="BGR", caption="Superfície Detectada")
         
@@ -80,8 +83,8 @@ if foto_capturada:
         aprovado_altura = altura_medida >= 2.2
         
         st.subheader("📊 Resultado da Análise")
-        st.write(f"*Comprimento Medido:* {largura_medida} cm ({largura_medida * 10:.1f} mm)")
-        st.write(f"*Altura Medida:* {altura_medida} cm ({altura_medida * 10:.1f} mm)")
+        st.write(f"Comprimento Medido: {largura_medida} cm ({largura_medida * 10:.1f} mm)")
+        st.write(f"Altura Medida: {altura_medida} cm ({altura_medida * 10:.1f} mm)")
         
         if aprovado_comprimento and aprovado_altura:
             st.success("✅ APROVADO: O CCB está dentro do padrão mínimo!")
