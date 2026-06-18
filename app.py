@@ -46,4 +46,4 @@ ctx = webrtc_streamer(
 if ctx.video_transformer:
     if st.button("📊 Analisar Enquadramento Atual"):
         st.info("Processando a imagem enquadrada...")
-        # A lógica de processamento e resposta de aprovação do OpenCV será executada a partir deste bloco.
+        # A lógica de processamento e resposta de aprovação do OpenCV será executada a partir deste bloco
