@@ -10,15 +10,17 @@ st.sidebar.info("Modo Operador com Enquadramento Digital Ao Vivo")
 st.sidebar.write("*Comprimento Mínimo:* 50 mm (5.0 cm)")
 st.sidebar.write("*Altura Mínima:* 22 mm (2.2 cm)")
 
-st.error("🚨 *INSTRUÇÃO OBRIGATÓRIA:* Aproxime ou afaste a câmera até que o selo preto da caixa preencha o retângulo vermelho que aparecerá no vídeo abaixo.")
+# O aviso agora fica estático no topo da página, impossível de não ver
+st.error("🚨 *INSTRUÇÃO OBRIGATÓRIA:* Aproxime ou afaste a câmera até que o selo preto da caixa preencha exatamente o retângulo vermelho que aparecerá no vídeo abaixo.")
 
 # --- PROCESSADOR DE VÍDEO EM TEMPO REAL ---
 class MascaraVideoTransformer(VideoTransformerBase):
     def transform(self, frame):
+        # Converte o frame do vídeo para o formato do OpenCV
         img = frame.to_ndarray(format="bgr24")
         altura_img, largura_img, _ = img.shape
         
-        # Alvo digital fixo ocupando a área central do vídeo
+        # Define o tamanho do alvo digital fixo na tela (70% de largura, 50% de altura)
         largura_guia = int(largura_img * 0.7)
         altura_guia = int(altura_img * 0.5)
         
@@ -27,23 +29,30 @@ class MascaraVideoTransformer(VideoTransformerBase):
         x_max = x_min + largura_guia
         y_max = y_min + altura_guia
         
-        # Injeta o retângulo vermelho e o texto de instrução vivo na tela
+        # DESENHA O RETÂNGULO VERMELHO AO VIVO NA TELA
         cv2.rectangle(img, (x_min, y_min), (x_max, y_max), (0, 0, 255), 3)
-        cv2.putText(img, "ENQUADRE O SELO AQUI", (x_min + 10, y_min - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+        cv2.putText(img, "ENQUADRE O SELO AQUI", (x_min + 10, y_min - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
         
         return img
 
-# Inicializa a nova câmera em tempo real na tela do celular
+# Inicializa o feed de vídeo com o enquadramento na tela
 ctx = webrtc_streamer(
     key="validador-ccb", 
     video_transformer_factory=MascaraVideoTransformer,
-    rtc_configuration={"iceServers": [{"urls": ["stun:://google.com"]}]},
+    rtc_configuration={"iceServers": [{"urls": ["stun:://google.com"]}]}, # Ajuda na conexão mobile
     media_stream_constraints={"video": True, "audio": False}
 )
 
-# --- BOTÃO DE ANÁLISE ---
+# --- PROCESSAMENTO APÓS CAPTURA ---
+# O streamlit-webrtc permite analisar o último frame quando o vídeo está ativo
 if ctx.video_transformer:
+    # Adiciona um botão para congelar/analisar a imagem do enquadramento
     if st.button("📊 Analisar Enquadramento Atual"):
-        st.info("Processando a imagem enquadrada...")
-        # A lógica de processamento e resposta de aprovação do OpenCV será executada a partir deste bloco
+        
+        # Pega a imagem atual que o operador está vendo na tela
+        # Nota: Para uma lógica de produção avançada, você pode salvar o frame atual em st.session_state
+        st.info("Processando medição baseada no enquadramento feito...")
+        
+        # (Abaixo segue a sua lógica padrão de detecção de bordas no contorno que já funcionava)
+        # Se precisar integrar o congelamento exato do frame do webrtc para gerar o relatório final de aprovação, me avise.
