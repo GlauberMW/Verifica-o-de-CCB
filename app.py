@@ -66,7 +66,7 @@ if foto_capturada:
         # --- ALTERAÇÃO DA PROPORÇÃO DO PIXEL PARA CORREÇÃO DO ERRO ---
         # Alterado de 0.055 para 0.038. Isso fará o sistema ler menos centímetros 
         # para o mesmo enquadramento, forçando a reprovação de selos pequenos.
-        proporcao_pixel_cm = 0.038  
+        proporcao_pixel_cm = 0.034  
         
         largura_medida = round(w * proporcao_pixel_cm, 2)
         altura_medida = round(h * proporcao_pixel_cm, 2)
