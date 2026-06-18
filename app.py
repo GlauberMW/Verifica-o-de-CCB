@@ -52,12 +52,11 @@ if foto_capturada:
     
     altura_img, largura_img, _ = imagem_cv.shape
     
-    # --- AJUSTE MATEMÁTICO DO ALVO (ROI) ---
+    # --- ÁREA DE CORTE CONSOLIDADA E ALINHADA ---
     largura_alvo = int(largura_img * 0.45)  
     altura_alvo = int(altura_img * 0.22)    
     
     x_inicio = int((largura_img - largura_alvo) / 2)
-    # Mudado para 0.42 para alinhar milimetricamente com a posição do retângulo do CSS da tela
     y_inicio = int((altura_img * 0.42) - (altura_alvo / 2)) 
     
     x_inicio = max(0, x_inicio)
@@ -65,41 +64,45 @@ if foto_capturada:
     
     imagem_recortada = imagem_cv[y_inicio:y_inicio+altura_alvo, x_inicio:x_inicio+largura_alvo]
     
-    # --- NOVO PROCESSAMENTO DE ALTO CONTRASTE CONTRA PAPELÃO ---
+    # --- NOVO MÉTODO: FECHAMENTO DE BORDAS DO RETÂNGULO ---
     cinza = cv2.cvtColor(imagem_recortada, cv2.COLOR_BGR2GRAY)
-    desfoque = cv2.GaussianBlur(cinza, (3, 3), 0)
+    desfoque = cv2.GaussianBlur(cinza, (5, 5), 0)
     
-    # Threshold Adaptativo de Otsu (Perfeito para detectar linhas pretas finas em fundo pardo)
-    _, threshold = cv2.threshold(desfoque, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # Detecta as linhas finas da borda do selo
+    bordas = cv2.Canny(desfoque, 30, 80)
     
-    # RETR_TREE mapeia a hierarquia para priorizar a borda mais externa do selo
-    contornos, _ = cv2.findContours(threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # Dilatação conecta as linhas do retângulo externo que foram cortadas pela luz
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    bordas_conectadas = cv2.dilate(bordas, kernel, iterations=1)
+    
+    # Busca os contornos de árvore hierárquica
+    contornos, _ = cv2.findContours(bordas_conectadas, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     
     if contornos:
-        # Filtro de tamanho para ignorar ruídos textuais pequenos
-        contornos_filtrados = [c for c in contornos if cv2.contourArea(c) > 400]
+        # Filtra para manter apenas componentes grandes (mínimo de 1500 pixels de área)
+        contornos_filtrados = [c for c in contornos if cv2.contourArea(c) > 1500]
         
         if contornos_filtrados:
-            # Seleciona o maior contorno (que agora com RETR_TREE será a borda de fora)
+            # Seleciona o maior bloco estrutural (o retângulo do selo por fora)
             maior_contorno = max(contornos_filtrados, key=cv2.contourArea)
             x, y, w, h = cv2.boundingRect(maior_contorno)
             
-            # --- NOVO FATOR DE CALIBRAÇÃO PROPORCIONAL ---
-            # Como expandimos a janela, recalibramos para manter a precisão dos 5.0 cm
-            proporcao_pixel_cm = 0.0165  
+            # --- NOVO FATOR DE CALIBRAÇÃO COM BASE NO RETÂNGULO GRANDE ---
+            # Ajustado para medir corretamente o tamanho externo total
+            proporcao_pixel_cm = 0.0215  
             
             largura_medida = round(w * proporcao_pixel_cm, 2)
             altura_medida = round(h * proporcao_pixel_cm, 2)
             
-            # Desenha a detecção verde do selo
+            # Desenha a detecção do retângulo externo (Verde)
             cv2.rectangle(imagem_cv, (x_inicio + x, y_inicio + y), (x_inicio + x + w, y_inicio + y + h), (0, 255, 0), 3)
             cv2.putText(imagem_cv, f"{w}px | {largura_medida}cm x {altura_medida}cm", (x_inicio + x, y_inicio + y - 12),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (36, 255, 12), 2)
             
-            # Desenha a área vermelha de escaneamento corrigida na tela
+            # Desenha a área vermelha de escaneamento
             cv2.rectangle(imagem_cv, (x_inicio, y_inicio), (x_inicio + largura_alvo, y_inicio + altura_alvo), (0, 0, 255), 2)
             
-            st.image(imagem_cv, channels="BGR", caption="Área Analisada Corrigida")
+            st.image(imagem_cv, channels="BGR", caption="Filtro de Geometria de Borda Aplicado")
             
             # Validação estrita de limites mínimos
             aprovado_comprimento = largura_medida >= 5.0
@@ -119,8 +122,8 @@ if foto_capturada:
                     erros.append("Altura abaixo de 22mm")
                 st.error(f"❌ REPROVADO: {', '.join(erros)}.")
         else:
-            st.warning("⚠️ Borda externa do selo não detectada. Centralize e tente novamente.")
+            st.warning("⚠️ Retângulo externo não isolado. Tente evitar reflexos diretos de luz no selo.")
     else:
         cv2.rectangle(imagem_cv, (x_inicio, y_inicio), (x_inicio + largura_alvo, y_inicio + altura_alvo), (0, 0, 255), 2)
         st.image(imagem_cv, channels="BGR", caption="Falha de Leitura")
-        st.warning("⚠️ Não foi possível identificar as bordas do objeto dentro da área delimitada.")
+        st.warning("⚠️ Não foi possível identificar formas geométricas na área destacada.")
