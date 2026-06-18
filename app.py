@@ -11,7 +11,7 @@ st.sidebar.info("Modo Operador com Enquadramento Digital")
 st.sidebar.write("*Comprimento Mínimo:* 50 mm (5.0 cm)")
 st.sidebar.write("*Altura Mínima:* 22 mm (2.2 cm)")
 
-# --- TRUQUE CSS AJUSTADO PARA EVITAR AS BORDAS PRETAS ---
+# --- TRUQUE CSS PERFEITO PARA TELA ESTREITA ---
 st.markdown(
     """
     <style>
@@ -20,20 +20,20 @@ st.markdown(
         position: relative !important;
     }
     
-    /* Cria o retângulo vermelho fixo ajustado apenas para a área útil do vídeo */
+    /* Cria o retângulo vermelho fixo perfeitamente dentro da área clara da câmera */
     div[data-testid="stCameraInput"]::after {
         content: "ALINHE O SELO AQUI";
         position: absolute;
-        top: 42%;            /* Centraliza um pouco mais para cima, longe do botão */
+        top: 42%;            /* Centralizado verticalmente na área da câmera */
         left: 50%;
         transform: translate(-50%, -50%);
-        width: 48%;          /* Reduzido de 75% para 48% para encaixar dentro do feed do celular */
-        height: 20%;         /* Reduzido de 35% para 20% para ficar no formato exato do selo */
-        border: 4px solid #FF0000; /* Linha vermelha clara e visível */
+        width: 38%;          /* Reduzido de 48% para 38% para sumir com as bordas pretas */
+        height: 18%;         /* Ajustado para 18% para manter a proporção retangular do selo */
+        border: 4px solid #FF0000; /* Linha vermelha bem visível */
         border-radius: 4px;
         color: #FF0000;
         font-weight: bold;
-        font-size: 11px;
+        font-size: 10px;     /* Fonte ligeiramente menor para não quebrar linha */
         text-align: center;
         padding-top: 3px;
         pointer-events: none; 
