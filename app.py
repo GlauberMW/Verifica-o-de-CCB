@@ -8,8 +8,8 @@ st.title("Verificador de Superfície - CCB")
 
 st.sidebar.header("Parâmetros Normativos (Fixos)")
 st.sidebar.info("Modo Operador com Enquadramento Digital")
-st.sidebar.write("*Comprimento Mínimo:* 50 mm (5.0 cm)")
-st.sidebar.write("*Altura Mínima:* 22 mm (2.2 cm)")
+st.sidebar.write("Comprimento Mínimo: 50 mm (5.0 cm)")
+st.sidebar.write("Altura Mínima: 22 mm (2.2 cm)")
 
 # --- TRUQUE CSS DE VISUALIZAÇÃO ---
 st.markdown(
@@ -41,7 +41,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.error("🚨 *INSTRUÇÃO OBRIGATÓRIA:* Aproxime ou afaste a câmera até que o selo preto da caixa preencha o retângulo vermelho na tela antes de clicar em bater foto.")
+st.error("🚨 INSTRUÇÃO OBRIGATÓRIA: Aproxime ou afaste a câmera até que o selo preto da caixa preencha o retângulo vermelho na tela antes de clicar em bater foto.")
 
 # Captura da foto usando o componente nativo em tela cheia do Streamlit
 foto_capturada = st.camera_input("Posicione o CCB centralizado na câmera")
@@ -52,7 +52,7 @@ if foto_capturada:
     
     altura_img, largura_img, _ = imagem_cv.shape
     
-    # --- ÁREA DE CORTE CONSOLIDADA E ALINHADA ---
+    # --- ÁREA DE CORTE DO ALVO (ROI) ---
     largura_alvo = int(largura_img * 0.45)  
     altura_alvo = int(altura_img * 0.22)    
     
@@ -64,66 +64,65 @@ if foto_capturada:
     
     imagem_recortada = imagem_cv[y_inicio:y_inicio+altura_alvo, x_inicio:x_inicio+largura_alvo]
     
-    # --- NOVO MÉTODO: FECHAMENTO DE BORDAS DO RETÂNGULO ---
+    # --- PROCESSAMENTO EXTREMO PARA UNIFICAR O RETÂNGULO ---
     cinza = cv2.cvtColor(imagem_recortada, cv2.COLOR_BGR2GRAY)
     desfoque = cv2.GaussianBlur(cinza, (5, 5), 0)
     
-    # Detecta as linhas finas da borda do selo
-    bordas = cv2.Canny(desfoque, 30, 80)
+    # Canny com limiar baixo para pegar as linhas laterais mesmo que estejam fracas
+    bordas = cv2.Canny(desfoque, 20, 60)
     
-    # Dilatação conecta as linhas do retângulo externo que foram cortadas pela luz
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    bordas_conectadas = cv2.dilate(bordas, kernel, iterations=1)
+    # Usamos um kernel horizontal e vertical maior para criar uma malha grossa que conecta as pontas
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 3))
+    bordas_conectadas = cv2.dilate(bordas, kernel, iterations=2)
+    bordas_conectadas = cv2.erode(bordas_conectadas, kernel, iterations=1)
     
-    # Busca os contornos de árvore hierárquica
-    contornos, _ = cv2.findContours(bordas_conectadas, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # --- NOVA LÓGICA: ENCÁPSULAMENTO POR PONTOS EXTREMOS ---
+    # Encontra todos os pixels brancos (linhas do selo) gerados na região
+    pontos = cv2.findNonZero(bordas_conectadas)
     
-    if contornos:
-        # Filtra para manter apenas componentes grandes (mínimo de 1500 pixels de área)
-        contornos_filtrados = [c for c in contornos if cv2.contourArea(c) > 1500]
+    if pontos is not None:
+        # Pega a caixa delimitadora perfeita que abraça TODOS os pontos gerados pelo selo no corte
+        x, y, w, h = cv2.boundingRect(pontos)
         
-        if contornos_filtrados:
-            # Seleciona o maior bloco estrutural (o retângulo do selo por fora)
-            maior_contorno = max(contornos_filtrados, key=cv2.contourArea)
-            x, y, w, h = cv2.boundingRect(maior_contorno)
-            
-            # --- NOVO FATOR DE CALIBRAÇÃO COM BASE NO RETÂNGULO GRANDE ---
-            # Ajustado para medir corretamente o tamanho externo total
-            proporcao_pixel_cm = 0.0215  
-            
-            largura_medida = round(w * proporcao_pixel_cm, 2)
-            altura_medida = round(h * proporcao_pixel_cm, 2)
-            
-            # Desenha a detecção do retângulo externo (Verde)
-            cv2.rectangle(imagem_cv, (x_inicio + x, y_inicio + y), (x_inicio + x + w, y_inicio + y + h), (0, 255, 0), 3)
-            cv2.putText(imagem_cv, f"{w}px | {largura_medida}cm x {altura_medida}cm", (x_inicio + x, y_inicio + y - 12),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (36, 255, 12), 2)
-            
-            # Desenha a área vermelha de escaneamento
-            cv2.rectangle(imagem_cv, (x_inicio, y_inicio), (x_inicio + largura_alvo, y_inicio + altura_alvo), (0, 0, 255), 2)
-            
-            st.image(imagem_cv, channels="BGR", caption="Filtro de Geometria de Borda Aplicado")
-            
-            # Validação estrita de limites mínimos
-            aprovado_comprimento = largura_medida >= 5.0
-            aprovado_altura = altura_medida >= 2.2
-            
-            st.subheader("📊 Resultado da Análise")
-            st.write(f"*Comprimento Medido:* {largura_medida} cm ({largura_medida * 10:.1f} mm)")
-            st.write(f"*Altura Medida:* {altura_medida} cm ({altura_medida * 10:.1f} mm)")
-            
-            if aprovado_comprimento and aprovado_altura:
-                st.success("✅ APROVADO: O CCB está dentro do padrão mínimo!")
-            else:
-                erros = []
-                if not aprovado_comprimento:
-                    erros.append("Comprimento abaixo de 50mm")
-                if not aprovado_altura:
-                    erros.append("Altura abaixo de 22mm")
-                st.error(f"❌ REPROVADO: {', '.join(erros)}.")
+        # Margem de ajuste para garantir que o enquadramento pegue a espessura da linha externa
+        w = int(w * 1.05)
+        h = int(h * 1.15)
+        
+        # --- NOVO FATOR DE CALIBRAÇÃO CONFIGURADO ---
+        # Como a caixa vai abrir para o tamanho máximo real, ajustei o fator para os 5.0 cm baterem certinho
+        proporcao_pixel_cm = 0.0175  
+        
+        largura_medida = round(w * proporcao_pixel_cm, 2)
+        altura_medida = round(h * proporcao_pixel_cm, 2)
+        
+        # Desenha a detecção final (Verde)
+        cv2.rectangle(imagem_cv, (x_inicio + x, y_inicio + y), (x_inicio + x + w, y_inicio + y + h), (0, 255, 0), 3)
+        cv2.putText(imagem_cv, f"{w}px | {largura_medida}cm x {altura_medida}cm", (x_inicio + x, y_inicio + y - 12),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (36, 255, 12), 2)
+        
+        # Desenha a área vermelha de escaneamento de fundo
+        cv2.rectangle(imagem_cv, (x_inicio, y_inicio), (x_inicio + largura_alvo, y_inicio + altura_alvo), (0, 0, 255), 2)
+        
+        st.image(imagem_cv, channels="BGR", caption="Análise por Varredura de Pontos Extremos")
+        
+        # Validação estrita de limites mínimos
+        aprovado_comprimento = largura_medida >= 5.0
+        aprovado_altura = altura_medida >= 2.2
+        
+        st.subheader("📊 Resultado da Análise")
+        st.write(f"Comprimento Medido: {largura_medida} cm ({largura_medida * 10:.1f} mm)")
+        st.write(f"Altura Medida: {altura_medida} cm ({altura_medida * 10:.1f} mm)")
+        
+        if aprovado_comprimento and aprovado_altura:
+            st.success("✅ APROVADO: O CCB está dentro do padrão mínimo!")
         else:
-            st.warning("⚠️ Retângulo externo não isolado. Tente evitar reflexos diretos de luz no selo.")
+            erros = []
+            if not aprovado_comprimento:
+                erros.append("Comprimento abaixo de 50mm")
+            if not aprovado_altura:
+                erros.append("Altura abaixo de 22mm")
+            st.error(f"❌ REPROVADO: {', '.join(erros)}.")
     else:
         cv2.rectangle(imagem_cv, (x_inicio, y_inicio), (x_inicio + largura_alvo, y_inicio + altura_alvo), (0, 0, 255), 2)
         st.image(imagem_cv, channels="BGR", caption="Falha de Leitura")
-        st.warning("⚠️ Não foi possível identificar formas geométricas na área destacada.")
+        st.warning("⚠️ Não foram encontrados elementos gráficos suficientes dentro do retângulo destacado.")
