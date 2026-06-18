@@ -11,7 +11,7 @@ st.sidebar.info("Modo Operador com Enquadramento Digital")
 st.sidebar.write("*Comprimento Mínimo:* 50 mm (5.0 cm)")
 st.sidebar.write("*Altura Mínima:* 22 mm (2.2 cm)")
 
-# --- TRUQUE CSS PARA DESENHAR A MÁSCARA POR CIMA DA CÂMERA EM TEMPO REAL ---
+# --- TRUQUE CSS AJUSTADO PARA EVITAR AS BORDAS PRETAS ---
 st.markdown(
     """
     <style>
@@ -20,24 +20,23 @@ st.markdown(
         position: relative !important;
     }
     
-    /* Cria o retângulo vermelho fixo no centro exato da câmera antes de tirar a foto */
+    /* Cria o retângulo vermelho fixo ajustado apenas para a área útil do vídeo */
     div[data-testid="stCameraInput"]::after {
         content: "ALINHE O SELO AQUI";
         position: absolute;
-        top: 50%;
+        top: 42%;            /* Centraliza um pouco mais para cima, longe do botão */
         left: 50%;
         transform: translate(-50%, -50%);
-        width: 75%;  /* Ocupa 75% da largura da tela */
-        height: 35%; /* Ocupa 35% da altura da tela (formato deitado do selo) */
-        border: 5px solid #FF0000; /* Linha vermelha grossa */
+        width: 48%;          /* Reduzido de 75% para 48% para encaixar dentro do feed do celular */
+        height: 20%;         /* Reduzido de 35% para 20% para ficar no formato exato do selo */
+        border: 4px solid #FF0000; /* Linha vermelha clara e visível */
         border-radius: 4px;
-        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.3); /* Escurece o fundo para destacar o centro */
         color: #FF0000;
         font-weight: bold;
-        font-size: 14px;
+        font-size: 11px;
         text-align: center;
-        padding-top: 5px;
-        pointer-events: none; /* Permite clicar no botão por trás da máscara */
+        padding-top: 3px;
+        pointer-events: none; 
         z-index: 99;
     }
     </style>
