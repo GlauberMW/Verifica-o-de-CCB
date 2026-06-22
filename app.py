@@ -75,6 +75,16 @@ html_scanner = """
             }
 
             // MUDANÇA EM TEMPO REAL BASEADO NAS SUAS MARCAÇÕES
+         # TRAVA DE SEGURANÇA: Só tenta ler se a foto realmente existir no sistema!
+if "foto_js" in st.session_state and st.session_state.foto_js is not None:
+    try:
+        dados_b64 = st.session_state.foto_js.split(',')[1]
+        bytes_img = base64.b64decode(dados_b64)
+        # ... resto do seu código de processamento que já funciona ...
+    except Exception as e:
+        st.error(f"Erro ao processar imagem: {e}")
+else:
+    st.info("💡 Aguardando a captura da foto para iniciar a medição do selo.")
             if (alcancouMarcacaoMinima) {
                 gabarito.style.borderColor = "#00FF00";
                 gabarito.style.boxShadow = "0 0 30px rgba(0, 255, 0, 0.9), 0 0 0 9999px rgba(0, 0, 0, 0.3)";
