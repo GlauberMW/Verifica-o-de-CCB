@@ -11,7 +11,7 @@ st.sidebar.info("Modo Operador com Enquadramento Digital")
 st.sidebar.write("Comprimento Mínimo: 50 mm (5.0 cm)")
 st.sidebar.write("Altura Mínima: 22 mm (2.2 cm)")
 
-# --- TRUQUE CSS CORRIGIDO PARA CASAR EXATAMENTE COM A FOTO REAL ---
+# --- TRUQUE CSS PARA CASAR EXATAMENTE COM A FOTO REAL ---
 st.markdown(
     """
     <style>
@@ -24,9 +24,7 @@ st.markdown(
         top: 42%;
         left: 50%;
         transform: translate(-50%, -50%);
-        /* Alargado de 38% para 45% para bater com a caixa vermelha de baixo */
         width: 45%; 
-        /* Ajustado de 18% para 22% para abrir o topo e fundo */
         height: 22%; 
         border: 4px solid #FF0000;
         border-radius: 4px;
@@ -45,7 +43,6 @@ st.markdown(
 
 st.error("🚨 INSTRUÇÃO OBRIGATÓRIA: Aproxime ou afaste a câmera até que o selo preto da caixa preencha o retângulo vermelho na tela antes de clicar em bater foto.")
 
-# Captura da foto usando o componente nativo em tela cheia do Streamlit
 foto_capturada = st.camera_input("Posicione o CCB centralizado na câmera")
 
 if foto_capturada:
@@ -54,7 +51,7 @@ if foto_capturada:
     
     altura_img, largura_img, _ = imagem_cv.shape
     
-    # --- ÁREA DE CORTE DO ALVO (ROI) CASADA COM O CSS ---
+    # --- ÁREA DE CORTE DO ALVO (ROI) ---
     largura_alvo = int(largura_img * 0.45)  
     altura_alvo = int(altura_img * 0.22)    
     
@@ -66,12 +63,13 @@ if foto_capturada:
     
     imagem_recortada = imagem_cv[y_inicio:y_inicio+altura_alvo, x_inicio:x_inicio+largura_alvo]
     
-    # --- PROCESSAMENTO POR VARREDURA DE PONTOS EXTREMOS ---
+    # --- PROCESSAMENTO DIGITAL DE IMAGENS ---
     cinza = cv2.cvtColor(imagem_recortada, cv2.COLOR_BGR2GRAY)
     desfoque = cv2.GaussianBlur(cinza, (5, 5), 0)
     bordas = cv2.Canny(desfoque, 20, 60)
     
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 3))
+    # Um kernel levemente mais equilibrado (11x5) ajuda a não perder a altura em ambientes com sombra
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 5))
     bordas_conectadas = cv2.dilate(bordas, kernel, iterations=2)
     bordas_conectadas = cv2.erode(bordas_conectadas, kernel, iterations=1)
     
@@ -80,45 +78,48 @@ if foto_capturada:
     if pontos is not None:
         x, y, w, h = cv2.boundingRect(pontos)
         
-        w = int(w * 1.05)
-        h = int(h * 1.15)
+        # Aplicando a margem com travas de segurança para não estourar o tamanho da imagem recortada
+        w = min(int(w * 1.05), largura_alvo - x)
+        h = min(int(h * 1.15), altura_alvo - y)
         
-        # --- CALIBRAÇÃO AJUSTADA PARA O TAMANHO GRANDE DO SELO ---
-        # Como o selo na sua imagem real deu 169 pixels para o tamanho total,
-        # o fator ideal agora é 0.0296 para que 169px resulte exatamente em 5.0cm!
+        # Fator de calibração fornecido por você
         proporcao_pixel_cm = 0.0296  
         
         largura_medida = round(w * proporcao_pixel_cm, 2)
         altura_medida = round(h * proporcao_pixel_cm, 2)
         
-        # Desenha a detecção final (Verde)
-        cv2.rectangle(imagem_cv, (x_inicio + x, y_inicio + y), (x_inicio + x + w, y_inicio + y + h), (0, 255, 0), 3)
-        cv2.putText(imagem_cv, f"{w}px | {largura_medida}cm x {altura_medida}cm", (x_inicio + x, y_inicio + y - 12),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (36, 255, 12), 2)
+        # Coordenadas absolutas para desenhar na imagem original (evita bugs visuais)
+        abs_x1, abs_y1 = x_inicio + x, y_inicio + y
+        abs_x2, abs_y2 = abs_x1 + w, abs_y1 + h
         
-        # Desenha a área vermelha de escaneamento de fundo
+        # Desenha a detecção final (Verde)
+        cv2.rectangle(imagem_cv, (abs_x1, abs_y1), (abs_x2, abs_y2), (0, 255, 0), 3)
+        cv2.putText(imagem_cv, f"{largura_medida}cm x {altura_medida}cm", (abs_x1, abs_y1 - 12),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        
+        # Desenha a área limite do escaneamento (Vermelha)
         cv2.rectangle(imagem_cv, (x_inicio, y_inicio), (x_inicio + largura_alvo, y_inicio + altura_alvo), (0, 0, 255), 2)
         
         st.image(imagem_cv, channels="BGR", caption="Análise por Varredura de Pontos Extremos")
         
-        # Validação estrita de limites mínimos
+        # Validação dos limites
         aprovado_comprimento = largura_medida >= 5.0
         aprovado_altura = altura_medida >= 2.2
         
         st.subheader("📊 Resultado da Análise")
-        st.write(f"Comprimento Medido: {largura_medida} cm ({largura_medida * 10:.1f} mm)")
-        st.write(f"Altura Medida: {altura_medida} cm ({altura_medida * 10:.1f} mm)")
+        st.write(f"**Comprimento Medido:** {largura_medida} cm ({largura_medida * 10:.1f} mm)")
+        st.write(f"**Altura Medida:** {altura_medida} cm ({altura_medida * 10:.1f} mm)")
         
         if aprovado_comprimento and aprovado_altura:
             st.success("✅ APROVADO: O CCB está dentro do padrão mínimo!")
         else:
             erros = []
             if not aprovado_comprimento:
-                erros.append("Comprimento abaixo de 50mm")
+                erros.append(f"Comprimento abaixo de 50mm (Medido: {largura_medida*10:.1f}mm)")
             if not aprovado_altura:
-                erros.append("Altura abaixo de 22mm")
+                erros.append(f"Altura abaixo de 22mm (Medido: {altura_medida*10:.1f}mm)")
             st.error(f"❌ REPROVADO: {', '.join(erros)}.")
     else:
         cv2.rectangle(imagem_cv, (x_inicio, y_inicio), (x_inicio + largura_alvo, y_inicio + altura_alvo), (0, 0, 255), 2)
         st.image(imagem_cv, channels="BGR", caption="Falha de Leitura")
-        st.warning("⚠️ Não foram encontrados elementos gráficos suficientes dentro do retângulo destacado.")
+        st.warning("⚠️ Não foram encontrados elementos gráficos suficientes dentro do retângulo destacado. Verifique a iluminação.")
