@@ -96,3 +96,45 @@ if foto_capturada:
     pontos = cv2.findNonZero(bordas_conectadas)
     
     if pontos is not None:
+        x, y, w, h = cv2.boundingRect(pontos)
+        
+        # Travas para não estourar a matriz da imagem
+        w = min(int(w * 1.02), largura_alvo - x) # Reduzi a folga para 2% já que o operador está guiado
+        h = min(int(h * 1.02), altura_alvo - y)
+        
+        # Proporção calibrada (Alinhada à distância da nova máscara)
+        proporcao_pixel_cm = 0.0296  
+        
+        largura_medida = round(w * proportion_pixel_cm if 'proportion_pixel_cm' in locals() else w * proporcao_pixel_cm, 2)
+        altura_medida = round(h * proporcao_pixel_cm, 2)
+        
+        # Coordenadas de desenho
+        abs_x1, abs_y1 = x_inicio + x, y_inicio + y
+        abs_x2, abs_y2 = abs_x1 + w, abs_y1 + h
+        
+        # Resultado visual
+        cv2.rectangle(imagem_cv, (abs_x1, abs_y1), (abs_x2, abs_y2), (0, 255, 0), 3)
+        cv2.putText(imagem_cv, f"{largura_medida}cm x {altura_medida}cm", (abs_x1, abs_y1 - 12),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        
+        st.image(imagem_cv, channels="BGR", caption="Resultado da Captura com Máscara")
+        
+        aprovado_comprimento = largura_medida >= 5.0
+        aprovado_altura = altura_medida >= 2.2
+        
+        st.subheader("📊 Resultado da Análise")
+        st.write(f"**Comprimento Medido:** {largura_medida} cm ({largura_medida * 10:.1f} mm)")
+        st.write(f"**Altura Medida:** {altura_medida} cm ({altura_medida * 10:.1f} mm)")
+        
+        if aprovado_comprimento and aprovado_altura:
+            st.success("✅ APROVADO: O CCB está em conformidade!")
+        else:
+            erros = []
+            if not aprovado_comprimento:
+                erros.append(f"Comprimento abaixo do padrão (Medido: {largura_medida*10:.1f}mm)")
+            if not aprovado_altura:
+                erros.append(f"Altura abaixo do padrão (Medido: {altura_medida*10:.1f}mm)")
+            st.error(f"❌ REPROVADO: {', '.join(erros)}.")
+    else:
+        st.image(imagem_cv, channels="BGR", caption="Falha de Leitura")
+        st.error("❌ Erro de leitura: Certifique-se de que o CCB preenche a área iluminada e que o ambiente está bem iluminado.")
