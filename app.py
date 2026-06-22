@@ -4,14 +4,13 @@ import numpy as np
 import base64
 from streamlit_js_eval import streamlit_js_eval
 
-st.set_page_config(page_title="Verificador CCB", layout="centered")
+st.set_page_config(page_title="Verificador CCB - Precisão", layout="centered")
 
 st.title("Verificador de Superfície - CCB")
 
-st.sidebar.header("Parâmetros Normativos (Fixos)")
-st.sidebar.info("Modo de Precisão Blindado")
-st.sidebar.write("Comprimento Mínimo: 50 mm (5.0 cm)")
-st.sidebar.write("Altura Mínima: 22 mm (2.2 cm)")
+st.sidebar.header("⚙️ Trava de Segurança")
+st.sidebar.warning("Modo Gabarito Estrito Ativado")
+st.sidebar.write("O operador é obrigado a encaixar o selo perfeitamente nas bordas verdes.")
 
 # --- COMPONENTE DE CÂMERA EM JAVASCRIPT ---
 html_camera = """
@@ -19,12 +18,13 @@ html_camera = """
     <div style="position: relative; width: 100%; max-width: 400px; aspect-ratio: 4/3; background: #222; border-radius: 8px; overflow: hidden;">
         <video id="video" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
         
-        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 75%; height: 40%; border: 4px solid #00FF00; border-radius: 8px; box-shadow: 0 0 15px rgba(0,255,0,0.6); pointer-events: none; display: flex; align-items: center; justify-content: center;">
-            <span style="color: #00FF00; font-family: sans-serif; font-size: 11px; font-weight: bold; text-shadow: 1px 1px 2px #000;">ENCAIXE O SELO EXATAMENTE AQUI</span>
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 32%; border: 4px dashed #00FF00; border-radius: 4px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <span style="color: #00FF00; font-family: sans-serif; font-size: 12px; font-weight: bold; text-shadow: 1px 1px 2px #000; letter-spacing: 1px;">ENCAIXE AS BORDAS DO SELO AQUI</span>
+            <span style="color: #00FF00; font-family: sans-serif; font-size: 9px; text-shadow: 1px 1px 2px #000; margin-top: 4px;">NÃO DEIXE SOBRAR NEM FALTAR ESPAÇO</span>
         </div>
     </div>
     <br>
-    <button id="snap" style="width: 100%; max-width: 400px; padding: 14px; background-color: #FF4B4B; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 16px;">📸 CAPTURAR FOTO</button>
+    <button id="snap" style="width: 100%; max-width: 400px; padding: 14px; background-color: #00FF00; color: black; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">📸 CAPTURAR E MEDIR</button>
     <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
 </div>
 
@@ -54,7 +54,7 @@ html_camera = """
 </script>
 """
 
-st.markdown("### 📸 Câmera de Inspeção")
+st.markdown("### 🔍 Escaneamento Obrigatório")
 st.components.v1.html(html_camera, height=360)
 
 foto_salva = streamlit_js_eval(js_expressions="localStorage.getItem('foto_capturada')", key="busca_foto")
@@ -68,76 +68,73 @@ if foto_salva and "," in foto_salva:
         
         altura_img, largura_img, _ = imagem_cv.shape
         
-        # --- ROI CENTRALIZADO SEGURO ---
-        largura_alvo = int(largura_img * 0.75)  
-        altura_alvo = int(altura_img * 0.40)    
+        # --- ROI CASADO EXATAMENTE COM A MOLDURA DO JAVASCRIPT (70% x 32%) ---
+        largura_alvo = int(largura_img * 0.70)  
+        altura_alvo = int(altura_img * 0.32)    
         x_inicio = int((largura_img - largura_alvo) / 2)
         y_inicio = int((altura_img - altura_alvo) / 2) 
         
         imagem_recortada = imagem_cv[y_inicio:y_inicio+altura_alvo, x_inicio:x_inicio+largura_alvo]
         
-        # --- TRATAMENTO DA IMAGEM ---
+        # --- PROCESSAMENTO DE IMAGEM ---
         cinza = cv2.cvtColor(imagem_recortada, cv2.COLOR_BGR2GRAY)
         desfoque = cv2.GaussianBlur(cinza, (5, 5), 0)
         
-        # Binarização adaptativa para pegar contornos bem definidos da linha preta
+        # Isola as linhas pretas com threshold adaptativo
         thresh = cv2.adaptiveThreshold(desfoque, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
         
-        # Encontra contornos
-        contornos, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        contornos, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        selo_valido = None
-        maior_area = 0
+        selo_detectado = False
         
-        for c in contornos:
-            area = cv2.contourArea(c)
-            if area > 1500: # Ignora pequenos ruídos e textos internos
-                x, y, w, h = cv2.boundingRect(c)
-                proporcao = float(w) / h
+        if contornos:
+            maior_contorno = max(contornos, key=cv2.contourArea)
+            
+            if cv2.contourArea(maior_contorno) > 2000:
+                x, y, w, h = cv2.boundingRect(maior_contorno)
                 
-                # O selo real tem proporção perto de 2.27. 
-                # Aceitamos apenas o que estiver entre 1.8 e 2.7 para garantir que é o retângulo do selo
-                if 1.8 <= proporcao <= 2.7:
-                    if area > maior_area:
-                        maior_area = area
-                        selo_valido = (x, y, w, h)
+                # --- A MÁGICA DA TRAVA DE DISTÂNCIA ESTÁ AQUI ---
+                # Calculamos quanto por cento da janela cortada o selo real está ocupando.
+                # Se o operador estiver na distância certa, o selo deve ocupar quase 100% da largura da janela (w / largura_alvo).
+                taxa_ocupacao_largura = w / largura_alvo
+                taxa_ocupacao_altura = h / altura_alvo
+                
+                # Convertendo os pixels para tamanho real baseado na janela fixa
+                # Se ocupar 100% da janela, ele tem exatamente o tamanho máximo permitido (5.0cm x 2.2cm)
+                largura_medida = round((w / largura_alvo) * 5.0, 2)
+                altura_medida = round((h / altura_alvo) * 2.2, 2)
+                
+                abs_x1, abs_y1 = x_inicio + x, y_inicio + y
+                abs_x2, abs_y2 = abs_x1 + w, abs_y1 + h
+                
+                # Desenha o feedback do OpenCV
+                cv2.rectangle(imagem_cv, (abs_x1, abs_y1), (abs_x2, abs_y2), (0, 255, 0), 4)
+                cv2.putText(imagem_cv, f"Medido: {largura_medida}cm x {altura_medida}cm", (abs_x1, abs_y1 - 15),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                
+                # Desenha os limites da janela ideal em azul
+                cv2.rectangle(imagem_cv, (x_inicio, y_inicio), (x_inicio + largura_alvo, y_inicio + altura_alvo), (255, 0, 0), 2)
+                
+                st.image(imagem_cv, channels="BGR", caption="Análise Estatística de Enquadramento")
+                
+                st.subheader("📊 Relatório de Distância e Enquadramento")
+                
+                # Condição de validação estrita:
+                # Se o operador afastar o celular, a taxa de ocupação cai (ex: 0.80). Logo, a largura medida cai para 4.0cm e REPROVA.
+                # Se ele tentar usar um selo menor e chegar perto, o selo vaza da janela e o OpenCV lê errado ou dá erro.
+                if taxa_ocupacao_largura < 0.90:
+                    st.error(f"❌ REPROVADO: O celular está muito longe! (Ocupação: {taxa_ocupacao_largura*100:.1f}%)")
+                    st.info("🔄 **Ação corretiva:** Aproxime a câmera até que a linha preta do selo encoste na linha pontilhada verde.")
+                elif largura_medida < 5.0 or altura_medida < 2.2:
+                    st.error(f"❌ REPROVADO: Selo menor que o padrão técnico medido ({largura_medida}cm x {altura_medida}cm).")
+                else:
+                    st.success(f"✅ APROVADO: Selo na distância correta e tamanho válido! ({largura_medida}cm x {altura_medida}cm)")
+                    selo_detectado = True
 
-        # Se encontrou um contorno que bate com o formato do selo CCB
-        if selo_valido is not None:
-            x, y, w, h = selo_valido
-            
-            # Fator de calibração pixel -> cm estável para a distância do gabarito
-            proporcao_pixel_cm = 0.0296  
-            
-            largura_medida = round(w * proporcao_pixel_cm, 2)
-            altura_medida = round(h * proporcao_pixel_cm, 2)
-            
-            abs_x1, abs_y1 = x_inicio + x, y_inicio + y
-            abs_x2, abs_y2 = abs_x1 + w, abs_y1 + h
-            
-            # Desenha a resposta na tela
-            cv2.rectangle(imagem_cv, (abs_x1, abs_y1), (abs_x2, abs_y2), (0, 255, 0), 4)
-            cv2.putText(imagem_cv, f"{largura_medida}cm x {altura_medida}cm", (abs_x1, abs_y1 - 15),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            
-            st.image(imagem_cv, channels="BGR", caption="Selo Identificado e Medido")
-            
-            aprovado_comprimento = largura_medida >= 5.0
-            aprovado_altura = altura_medida >= 2.2
-            
-            st.subheader("📊 Resultado da Análise")
-            st.write(f"**Comprimento Medido:** {largura_medida} cm ({largura_medida * 10:.1f} mm)")
-            st.write(f"**Altura Medida:** {altura_medida} cm ({altura_medida * 10:.1f} mm)")
-            
-            if aprovado_comprimento and aprovado_altura:
-                st.success("✅ APROVADO: O selo está dentro das dimensões padrão.")
-            else:
-                st.error(f"❌ REPROVADO: Dimensões incorretas (Selo menor que o padrão).")
-        else:
-            # Se não achou nenhum retângulo na proporção correta, ele não mede coisas erradas por engano
+        if not selo_detectado and 'taxa_ocupacao_largura' not in locals():
             cv2.rectangle(imagem_cv, (x_inicio, y_inicio), (x_inicio + largura_alvo, y_inicio + altura_alvo), (0, 0, 255), 2)
-            st.image(imagem_cv, channels="BGR", caption="Erro de Enquadramento")
-            st.error("❌ ERRO: O sistema não conseguiu isolar a borda do selo. Certifique-se de que o selo não está cortado ou adulterado.")
+            st.image(imagem_cv, channels="BGR", caption="Erro de Leitura")
+            st.error("❌ ERRO: Selo fora de posição ou muito próximo (vazando da área útil). Rebanhe o selo na moldura verde.")
             
     except Exception as e:
-        st.error(f"Erro técnico: {e}")
+        st.error(f"Erro no motor de análise: {e}")
